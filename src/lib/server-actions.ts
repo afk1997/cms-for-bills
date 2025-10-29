@@ -87,6 +87,16 @@ export async function createBill(formData: FormData) {
     return { error: "Ambulance not found" };
   }
 
+  if (session.role === Role.OPERATOR) {
+    const isAssigned = ambulance.operatorAssignments.some(
+      (assignment) => assignment.operatorId === session.user.id
+    );
+
+    if (!isAssigned) {
+      return { error: "You are not assigned to this ambulance" };
+    }
+  }
+
   const files = formData.getAll("attachments");
   const attachments = [] as { fileName: string; fileUrl: string }[];
   for (const file of files) {

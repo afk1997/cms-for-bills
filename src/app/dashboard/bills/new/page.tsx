@@ -19,6 +19,21 @@ export default async function NewBillPage() {
     orderBy: { name: "asc" }
   });
 
+  if (session.user.role === Role.OPERATOR) {
+    const assignments = await prisma.ambulanceOperatorAssignment.findMany({
+      where: { operatorId: session.user.id },
+      include: {
+        ambulance: {
+          include: ambulanceInclude
+        }
+      }
+    });
+
+    ambulances = assignments
+      .flatMap((assignment) => (assignment.ambulance ? [assignment.ambulance] : []))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   return (
     <div className="max-w-3xl space-y-6">
       <div className="card">
