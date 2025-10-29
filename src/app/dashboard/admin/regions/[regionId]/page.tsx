@@ -18,11 +18,7 @@ export default async function EditRegionPage({ params }: PageParams) {
     where: { id: params.regionId },
     include: {
       ambulances: {
-        include: {
-          operatorAssignments: {
-            include: { operator: true }
-          }
-        },
+        include: { operator: true },
         orderBy: { name: "asc" }
       },
       bills: { select: { id: true } }
@@ -80,14 +76,7 @@ export default async function EditRegionPage({ params }: PageParams) {
                     {ambulance.name} ({ambulance.code})
                   </p>
                   <p className="text-xs text-slate-500">
-                    Operators:
-                    {ambulance.operatorAssignments.length ? (
-                      <span className="ml-1">
-                        {ambulance.operatorAssignments.map((assignment) => assignment.operator.name).join(", ")}
-                      </span>
-                    ) : (
-                      <span className="ml-1 text-slate-400">Unassigned</span>
-                    )}
+                    Operator: {ambulance.operator ? ambulance.operator.name : "Unassigned"}
                   </p>
                 </div>
                 <Link

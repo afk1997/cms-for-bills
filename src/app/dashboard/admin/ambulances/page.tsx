@@ -89,12 +89,8 @@ export default async function AmbulancesAdminPage() {
                     {ambulance.region.name} ({ambulance.region.city})
                   </td>
                   <td>
-                    {ambulance.operatorAssignments.length ? (
-                      <ul className="list-disc pl-4 text-sm text-slate-500">
-                        {ambulance.operatorAssignments.map((assignment) => (
-                          <li key={assignment.id}>{assignment.operator.name}</li>
-                        ))}
-                      </ul>
+                    {ambulance.operator ? (
+                      ambulance.operator.name
                     ) : (
                       <span className="text-xs text-slate-400">Unassigned</span>
                     )}
