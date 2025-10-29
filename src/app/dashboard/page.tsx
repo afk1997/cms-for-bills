@@ -46,7 +46,7 @@ export default async function DashboardPage() {
 
       <AnalyticsPanel />
 
-      {user.role === Role.OPERATOR && (
+      {(user.role === Role.OPERATOR || user.role === Role.ADMIN) && (
         <div>
           <Link
             href="/dashboard/bills/new"
@@ -134,6 +134,12 @@ export default async function DashboardPage() {
               className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:border-primary-400 hover:text-primary-700"
             >
               Manage ambulances
+            </Link>
+            <Link
+              href="/dashboard/bills/new"
+              className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:border-primary-400 hover:text-primary-700"
+            >
+              Submit a new bill
             </Link>
           </div>
         </section>

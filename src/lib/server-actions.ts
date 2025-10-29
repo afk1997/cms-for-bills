@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { authenticate, createSession, destroySession, getSession, hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { Role } from "@prisma/client";
+import { Role, BillStatus } from "@prisma/client";
 import { z } from "zod";
 import { saveFile } from "@/lib/upload";
 
@@ -43,12 +43,15 @@ const createBillSchema = z.object({
   invoiceNumber: z.string().min(2),
   invoiceDate: z.string(),
   description: z.string().optional(),
-  ambulanceId: z.string()
+  ambulanceId: z.string(),
+  initialStatus: z
+    .enum(["PENDING_L1", "PENDING_L2", "PENDING_PAYMENT"])
+    .optional()
 });
 
 export async function createBill(formData: FormData) {
   const session = await getSession();
-  if (!session || session.role !== Role.OPERATOR) {
+  if (!session || (session.role !== Role.OPERATOR && session.role !== Role.ADMIN)) {
     return { error: "Not authorized" };
   }
 
@@ -60,16 +63,25 @@ export async function createBill(formData: FormData) {
     invoiceNumber: formData.get("invoiceNumber"),
     invoiceDate: formData.get("invoiceDate"),
     description: formData.get("description"),
-    ambulanceId: formData.get("ambulanceId")
+    ambulanceId: formData.get("ambulanceId"),
+    initialStatus: formData.get("initialStatus")
   });
 
   if (!parsed.success) {
     return { error: "Invalid bill details" };
   }
 
+  if (session.role !== Role.ADMIN && parsed.data.initialStatus) {
+    return { error: "Not authorized" };
+  }
+
+  if (session.role === Role.ADMIN && !parsed.data.initialStatus) {
+    return { error: "Select a workflow destination" };
+  }
+
   const ambulance = await prisma.ambulance.findUnique({
     where: { id: parsed.data.ambulanceId },
-    include: { region: true }
+    include: { region: true, operator: true }
   });
   if (!ambulance) {
     return { error: "Ambulance not found" };
@@ -84,6 +96,16 @@ export async function createBill(formData: FormData) {
     }
   }
 
+  const destinationStatus: BillStatus =
+    session.role === Role.ADMIN
+      ? (parsed.data.initialStatus as BillStatus)
+      : BillStatus.PENDING_L1;
+
+  const submissionNote =
+    session.role === Role.ADMIN
+      ? getAdminSubmissionNote(destinationStatus)
+      : "Bill submitted";
+
   await prisma.bill.create({
     data: {
       title: parsed.data.title,
@@ -95,21 +117,38 @@ export async function createBill(formData: FormData) {
       description: parsed.data.description,
       regionId: ambulance.regionId,
       ambulanceId: ambulance.id,
-      operatorId: session.user.id,
+      operatorId:
+        session.role === Role.ADMIN
+          ? ambulance.operator?.id ?? session.user.id
+          : session.user.id,
+      status: destinationStatus,
       attachments: {
         create: attachments
       },
       logs: {
         create: {
           actorId: session.user.id,
-          to: "PENDING_L1",
-          note: "Bill submitted"
+          to: destinationStatus,
+          note: submissionNote
         }
       }
     },
   });
 
   redirect("/dashboard");
+}
+
+function getAdminSubmissionNote(status: BillStatus) {
+  switch (status) {
+    case BillStatus.PENDING_L1:
+      return "Admin submitted directly to Level 1";
+    case BillStatus.PENDING_L2:
+      return "Admin submitted directly to Level 2";
+    case BillStatus.PENDING_PAYMENT:
+      return "Admin routed bill to accounts";
+    default:
+      return "Admin submitted bill";
+  }
 }
 
 const statusTransitionSchema = z.object({
