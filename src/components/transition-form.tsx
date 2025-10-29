@@ -15,8 +15,12 @@ const transitions: Record<Role, { label: string; status: BillStatus; requiresNot
     { label: "Return to Level 1", status: "RETURNED_L2", requiresNote: true },
     { label: "Reject", status: "REJECTED_L2", requiresNote: true }
   ],
+  ADMIN: [
+    { label: "Route to Level 1", status: "PENDING_L1" },
+    { label: "Route to Level 2", status: "PENDING_L2" },
+    { label: "Route to Accounts", status: "PENDING_PAYMENT" }
+  ],
   ACCOUNTS: [],
-  ADMIN: [],
   OPERATOR: []
 };
 

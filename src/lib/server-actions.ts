@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { authenticate, createSession, destroySession, getSession, hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Role } from "@prisma/client";
@@ -175,6 +176,8 @@ function getAllowedStatus(role: Role, current: string) {
       return current === "PENDING_L1" ? ["PENDING_L2", "RETURNED_L1", "REJECTED_L1"] : [];
     case Role.LEVEL2:
       return current === "PENDING_L2" ? ["PENDING_PAYMENT", "RETURNED_L2", "REJECTED_L2"] : [];
+    case Role.ADMIN:
+      return ["PENDING_L1", "PENDING_L2", "PENDING_PAYMENT"];
     case Role.ACCOUNTS:
       return current === "PENDING_PAYMENT" ? ["PAID"] : [];
     default:
@@ -304,7 +307,114 @@ export async function createUser(formData: FormData) {
     }
   });
 
+  revalidatePath("/dashboard/admin/users");
+
   return { user };
+}
+
+const updateUserSchema = z.object({
+  userId: z.string(),
+  name: z.string().min(3),
+  email: z.string().email(),
+  role: z.nativeEnum(Role),
+  password: z.string().min(6).optional(),
+  regionIds: z.array(z.string()).optional(),
+  ambulanceIds: z.array(z.string()).optional()
+});
+
+export async function updateUser(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== Role.ADMIN) {
+    return { error: "Not authorized" };
+  }
+
+  const password = formData.get("password");
+  const parsed = updateUserSchema.safeParse({
+    userId: formData.get("userId"),
+    name: formData.get("name"),
+    email: formData.get("email"),
+    role: formData.get("role"),
+    password: typeof password === "string" && password.trim().length ? password : undefined,
+    regionIds: formData
+      .getAll("regionIds")
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ambulanceIds: formData
+      .getAll("ambulanceIds")
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+  });
+
+  if (!parsed.success) {
+    return { error: "Invalid user data" };
+  }
+
+  const regionIds = parsed.data.regionIds ?? [];
+  const ambulanceIds = parsed.data.ambulanceIds ?? [];
+
+  const updates: { name: string; email: string; role: Role; passwordHash?: string } = {
+    name: parsed.data.name,
+    email: parsed.data.email,
+    role: parsed.data.role
+  };
+
+  if (parsed.data.password) {
+    updates.passwordHash = await hashPassword(parsed.data.password);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: parsed.data.userId },
+      data: updates
+    });
+
+    if (regionIds.length) {
+      await tx.userRegionAssignment.deleteMany({
+        where: {
+          userId: parsed.data.userId,
+          regionId: { notIn: regionIds }
+        }
+      });
+    } else {
+      await tx.userRegionAssignment.deleteMany({ where: { userId: parsed.data.userId } });
+    }
+
+    const existingAssignments = await tx.userRegionAssignment.findMany({
+      where: { userId: parsed.data.userId }
+    });
+    const assignedRegionIds = new Set(existingAssignments.map((assignment) => assignment.regionId));
+    const regionsToCreate = regionIds.filter((regionId) => !assignedRegionIds.has(regionId));
+    if (regionsToCreate.length) {
+      await tx.userRegionAssignment.createMany({
+        data: regionsToCreate.map((regionId) => ({ userId: parsed.data.userId, regionId }))
+      });
+    }
+
+    if (ambulanceIds.length) {
+      await tx.ambulance.updateMany({
+        where: {
+          operatorId: parsed.data.userId,
+          id: { notIn: ambulanceIds }
+        },
+        data: { operatorId: null }
+      });
+    } else {
+      await tx.ambulance.updateMany({
+        where: { operatorId: parsed.data.userId },
+        data: { operatorId: null }
+      });
+    }
+
+    if (ambulanceIds.length) {
+      await tx.ambulance.updateMany({
+        where: { id: { in: ambulanceIds } },
+        data: { operatorId: parsed.data.userId }
+      });
+    }
+  });
+
+  revalidatePath("/dashboard/admin/users");
+  revalidatePath(`/dashboard/admin/users/${parsed.data.userId}`);
+
+  redirect("/dashboard/admin/users");
 }
 
 const regionSchema = z.object({
