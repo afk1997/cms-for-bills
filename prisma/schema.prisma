@@ -28,19 +28,17 @@ enum BillStatus {
 }
 
 model User {
-  id             String    @id @default(cuid())
-  name           String
-  email          String    @unique
-  passwordHash   String
-  role           Role
-  isActive       Boolean   @default(true)
-  regions        UserRegionAssignment[]
-  ambulances     Ambulance[] @relation("AmbulanceOperator")
-  operatorBills  Bill[]      @relation("BillOperator")
-  paymentsRaised Payment[]   @relation("PaymentCreator")
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  actions        BillStatusLog[]
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         Role
+  isActive     Boolean   @default(true)
+  regions      UserRegionAssignment[]
+  ambulances   Ambulance[] @relation("AmbulanceOperator")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  actions      BillStatusLog[]
 }
 
 model Region {
@@ -82,7 +80,7 @@ model Bill {
   regionId        String
   ambulance       Ambulance       @relation(fields: [ambulanceId], references: [id])
   ambulanceId     String
-  operator        User            @relation("BillOperator", fields: [operatorId], references: [id])
+  operator        User            @relation(fields: [operatorId], references: [id])
   operatorId      String
   payment         Payment?
   attachments     BillAttachment[]
@@ -122,7 +120,7 @@ model Payment {
   paymentMode    String
   receiptUrl     String?
   notes          String?
-  createdBy      User     @relation("PaymentCreator", fields: [createdById], references: [id])
+  createdBy      User     @relation(fields: [createdById], references: [id])
   createdById    String
   createdAt      DateTime @default(now())
 }
