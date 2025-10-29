@@ -119,6 +119,7 @@ Use `npx prisma studio` for a visual data browser.
 
 ## Troubleshooting
 
+- **Deprecated dependency warnings (`inflight`, `rimraf`, `glob`)** – delete your existing lockfile and reinstall to pick up the updated ESLint 9 toolchain shipped with this repo.
 - **403 when installing packages locally** – ensure you are not behind a proxy or using npm's strict security policies.
 - **Database connection errors** – verify the `DATABASE_URL` host, username, and password. For Vercel Postgres ensure you allow access from Vercel's IP or use pooled connection strings.
 - **JWT errors** – update `SESSION_SECRET` to a long random string and redeploy.
