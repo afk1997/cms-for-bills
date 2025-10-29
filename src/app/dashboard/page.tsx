@@ -1,13 +1,24 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
-import { Role, BillStatus } from "@prisma/client";
+import { Role, BillStatus, Prisma } from "@prisma/client";
 import Link from "next/link";
 import { TransitionForm } from "@/components/transition-form";
 import { PaymentForm } from "@/components/payment-form";
 import { notFound } from "next/navigation";
 import { AnalyticsPanel } from "@/components/analytics-panel";
 
-export default async function DashboardPage() {
+type DashboardSearchParams = {
+  region?: string | string[];
+  ambulance?: string | string[];
+  vendor?: string | string[];
+  status?: string | string[];
+};
+
+export default async function DashboardPage({
+  searchParams
+}: {
+  searchParams?: DashboardSearchParams;
+}) {
   const session = await getSession();
   if (!session) {
     notFound();
@@ -15,8 +26,40 @@ export default async function DashboardPage() {
 
   const user = session.user;
 
+  const selectedRegion =
+    typeof searchParams?.region === "string" ? searchParams.region : undefined;
+  const selectedAmbulance =
+    typeof searchParams?.ambulance === "string"
+      ? searchParams.ambulance
+      : undefined;
+  const selectedVendor =
+    typeof searchParams?.vendor === "string" ? searchParams.vendor : undefined;
+  const rawStatus =
+    typeof searchParams?.status === "string" ? searchParams.status : undefined;
+  const selectedStatus =
+    rawStatus && Object.values(BillStatus).includes(rawStatus as BillStatus)
+      ? (rawStatus as BillStatus)
+      : undefined;
+
+  const where: Prisma.BillWhereInput = filterBillsByRole(user.id, user.role);
+
+  if (user.role === Role.ADMIN) {
+    if (selectedRegion) {
+      where.regionId = selectedRegion;
+    }
+    if (selectedAmbulance) {
+      where.ambulanceId = selectedAmbulance;
+    }
+    if (selectedVendor) {
+      where.vendor = selectedVendor;
+    }
+    if (selectedStatus) {
+      where.status = selectedStatus;
+    }
+  }
+
   const bills = await prisma.bill.findMany({
-    where: filterBillsByRole(user.id, user.role),
+    where,
     include: {
       ambulance: true,
       region: true,
@@ -31,6 +74,34 @@ export default async function DashboardPage() {
     _count: { status: true },
     _sum: { amount: true }
   });
+
+  let regions: { id: string; name: string }[] = [];
+  let ambulances: { id: string; name: string }[] = [];
+  let vendors: string[] = [];
+
+  if (user.role === Role.ADMIN) {
+    const [regionResults, ambulanceResults, vendorResults] = await Promise.all([
+      prisma.region.findMany({
+        select: { id: true, name: true },
+        orderBy: { name: "asc" }
+      }),
+      prisma.ambulance.findMany({
+        select: { id: true, name: true },
+        orderBy: { name: "asc" }
+      }),
+      prisma.bill.findMany({
+        select: { vendor: true },
+        distinct: ["vendor"],
+        orderBy: { vendor: "asc" }
+      })
+    ]);
+
+    regions = regionResults;
+    ambulances = ambulanceResults;
+    vendors = vendorResults
+      .map((entry) => entry.vendor)
+      .filter((vendor): vendor is string => Boolean(vendor));
+  }
 
   return (
     <div className="space-y-8">
@@ -59,6 +130,84 @@ export default async function DashboardPage() {
 
       <section id="bills" className="card">
         <h2 className="text-lg font-semibold text-slate-800">Workflow queue</h2>
+        {user.role === Role.ADMIN && (
+          <form className="mt-4 grid gap-4 md:grid-cols-5" method="get">
+            <label className="flex flex-col text-sm text-slate-600">
+              <span className="mb-1 font-medium">Region</span>
+              <select
+                name="region"
+                defaultValue={selectedRegion ?? ""}
+                className="rounded-md border border-slate-200 px-3 py-2"
+              >
+                <option value="">All regions</option>
+                {regions.map((region) => (
+                  <option key={region.id} value={region.id}>
+                    {region.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col text-sm text-slate-600">
+              <span className="mb-1 font-medium">Ambulance</span>
+              <select
+                name="ambulance"
+                defaultValue={selectedAmbulance ?? ""}
+                className="rounded-md border border-slate-200 px-3 py-2"
+              >
+                <option value="">All ambulances</option>
+                {ambulances.map((ambulance) => (
+                  <option key={ambulance.id} value={ambulance.id}>
+                    {ambulance.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col text-sm text-slate-600">
+              <span className="mb-1 font-medium">Vendor</span>
+              <select
+                name="vendor"
+                defaultValue={selectedVendor ?? ""}
+                className="rounded-md border border-slate-200 px-3 py-2"
+              >
+                <option value="">All vendors</option>
+                {vendors.map((vendor) => (
+                  <option key={vendor} value={vendor}>
+                    {vendor}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col text-sm text-slate-600">
+              <span className="mb-1 font-medium">Status</span>
+              <select
+                name="status"
+                defaultValue={selectedStatus ?? ""}
+                className="rounded-md border border-slate-200 px-3 py-2"
+              >
+                <option value="">All statuses</option>
+                {Object.values(BillStatus).map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex items-end gap-2">
+              <button
+                type="submit"
+                className="h-10 rounded-md bg-primary-600 px-4 text-sm font-medium text-white shadow hover:bg-primary-700"
+              >
+                Apply filters
+              </button>
+              <Link
+                href="/dashboard#bills"
+                className="h-10 rounded-md border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:border-primary-400 hover:text-primary-700"
+              >
+                Reset
+              </Link>
+            </div>
+          </form>
+        )}
         <div className="mt-4 overflow-x-auto">
           <table className="table">
             <thead>
@@ -67,6 +216,7 @@ export default async function DashboardPage() {
                 <th>Vendor</th>
                 <th>Ambulance</th>
                 <th>Region</th>
+                <th>Created</th>
                 <th>Amount</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -89,6 +239,13 @@ export default async function DashboardPage() {
                   <td>{bill.vendor}</td>
                   <td>{bill.ambulance.name}</td>
                   <td>{bill.region.name}</td>
+                  <td>
+                    {new Intl.DateTimeFormat("en-IN", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric"
+                    }).format(bill.createdAt)}
+                  </td>
                   <td>₹{Number(bill.amount).toLocaleString()}</td>
                   <td>
                     <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
@@ -148,7 +305,7 @@ export default async function DashboardPage() {
   );
 }
 
-function filterBillsByRole(userId: string, role: Role) {
+function filterBillsByRole(userId: string, role: Role): Prisma.BillWhereInput {
   switch (role) {
     case Role.OPERATOR:
       return { operatorId: userId };
