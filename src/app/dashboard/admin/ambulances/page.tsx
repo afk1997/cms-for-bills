@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -12,7 +13,9 @@ export default async function AmbulancesAdminPage() {
   const ambulances = await prisma.ambulance.findMany({
     include: {
       region: true,
-      operator: true
+      operatorAssignments: {
+        include: { operator: true }
+      }
     },
     orderBy: { createdAt: "desc" }
   });
@@ -46,14 +49,14 @@ export default async function AmbulancesAdminPage() {
           </div>
           <div>
             <label className="text-sm font-medium text-slate-600">Operator (optional)</label>
-            <select name="operatorId" className="mt-1 w-full">
-              <option value="">Assign later</option>
+            <select name="operatorIds" multiple className="mt-1 h-32 w-full">
               {operators.map((operator) => (
                 <option key={operator.id} value={operator.id}>
                   {operator.name}
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-xs text-slate-400">Hold Ctrl or Command to assign multiple operators.</p>
           </div>
           <div className="md:col-span-2">
             <button type="submit" className="rounded-md bg-primary-600 px-4 py-2 text-white hover:bg-primary-700">
@@ -72,8 +75,9 @@ export default async function AmbulancesAdminPage() {
                 <th>Name</th>
                 <th>Code</th>
                 <th>Region</th>
-                <th>Operator</th>
+                <th>Operators</th>
                 <th>Created</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -84,8 +88,26 @@ export default async function AmbulancesAdminPage() {
                   <td>
                     {ambulance.region.name} ({ambulance.region.city})
                   </td>
-                  <td>{ambulance.operator ? ambulance.operator.name : <span className="text-xs text-slate-400">Unassigned</span>}</td>
+                  <td>
+                    {ambulance.operatorAssignments.length ? (
+                      <ul className="list-disc pl-4 text-sm text-slate-500">
+                        {ambulance.operatorAssignments.map((assignment) => (
+                          <li key={assignment.id}>{assignment.operator.name}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="text-xs text-slate-400">Unassigned</span>
+                    )}
+                  </td>
                   <td>{ambulance.createdAt.toDateString()}</td>
+                  <td>
+                    <Link
+                      href={`/dashboard/admin/ambulances/${ambulance.id}`}
+                      className="text-sm font-medium text-primary-700 hover:underline"
+                    >
+                      Edit
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
