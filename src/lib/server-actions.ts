@@ -443,6 +443,8 @@ export async function createRegion(formData: FormData) {
     data: parsed.data
   });
 
+  revalidatePath("/dashboard/admin/regions");
+
   return { region };
 }
 
@@ -479,5 +481,118 @@ export async function createAmbulance(formData: FormData) {
     }
   });
 
+  revalidatePath("/dashboard/admin/ambulances");
+
+  if (parsed.data.operatorId) {
+    revalidatePath(`/dashboard/admin/users/${parsed.data.operatorId}`);
+  }
+
   return { ambulance };
+}
+
+const updateRegionSchema = regionSchema.extend({
+  regionId: z.string()
+});
+
+export async function updateRegion(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== Role.ADMIN) {
+    return { error: "Not authorized" };
+  }
+
+  const parsed = updateRegionSchema.safeParse({
+    regionId: formData.get("regionId"),
+    name: formData.get("name"),
+    city: formData.get("city"),
+    state: formData.get("state")
+  });
+
+  if (!parsed.success) {
+    return { error: "Invalid region data" };
+  }
+
+  await prisma.region.update({
+    where: { id: parsed.data.regionId },
+    data: {
+      name: parsed.data.name,
+      city: parsed.data.city,
+      state: parsed.data.state
+    }
+  });
+
+  revalidatePath("/dashboard/admin/regions");
+  revalidatePath(`/dashboard/admin/regions/${parsed.data.regionId}`);
+  revalidatePath("/dashboard/admin/ambulances");
+
+  redirect("/dashboard/admin/regions");
+}
+
+const updateAmbulanceSchema = ambulanceSchema.extend({
+  ambulanceId: z.string()
+});
+
+export async function updateAmbulance(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== Role.ADMIN) {
+    return { error: "Not authorized" };
+  }
+
+  const parsed = updateAmbulanceSchema.safeParse({
+    ambulanceId: formData.get("ambulanceId"),
+    name: formData.get("name"),
+    code: formData.get("code"),
+    regionId: formData.get("regionId"),
+    operatorId: (() => {
+      const operatorId = formData.get("operatorId");
+      return typeof operatorId === "string" && operatorId.length ? operatorId : undefined;
+    })()
+  });
+
+  if (!parsed.success) {
+    return { error: "Invalid ambulance data" };
+  }
+
+  const existing = await prisma.ambulance.findUnique({
+    where: { id: parsed.data.ambulanceId },
+    select: { operatorId: true, regionId: true }
+  });
+
+  if (!existing) {
+    return { error: "Ambulance not found" };
+  }
+
+  const ambulance = await prisma.ambulance.update({
+    where: { id: parsed.data.ambulanceId },
+    data: {
+      name: parsed.data.name,
+      code: parsed.data.code,
+      regionId: parsed.data.regionId,
+      operatorId: parsed.data.operatorId ?? null
+    }
+  });
+
+  revalidatePath("/dashboard/admin/ambulances");
+  revalidatePath(`/dashboard/admin/ambulances/${parsed.data.ambulanceId}`);
+  revalidatePath("/dashboard/admin/regions");
+
+  const affectedRegions = new Set([existing.regionId, ambulance.regionId]);
+  for (const regionId of affectedRegions) {
+    revalidatePath(`/dashboard/admin/regions/${regionId}`);
+  }
+
+  const affectedUsers = new Set<string>();
+  if (existing.operatorId) {
+    affectedUsers.add(existing.operatorId);
+  }
+  if (ambulance.operatorId) {
+    affectedUsers.add(ambulance.operatorId);
+  }
+
+  for (const userId of affectedUsers) {
+    revalidatePath(`/dashboard/admin/users/${userId}`);
+  }
+
+  revalidatePath("/dashboard/admin/users");
+
+  redirect("/dashboard/admin/ambulances");
 }
