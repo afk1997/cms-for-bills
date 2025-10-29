@@ -305,7 +305,8 @@ const userSchema = z.object({
   email: z.string().email(),
   password: z.string().min(6),
   role: z.nativeEnum(Role),
-  regionIds: z.array(z.string()).optional()
+  regionIds: z.array(z.string()).optional(),
+  ambulanceIds: z.array(z.string()).optional()
 });
 
 export async function createUser(formData: FormData) {
@@ -322,6 +323,11 @@ export async function createUser(formData: FormData) {
     regionIds: formData
       .getAll("regionIds")
       .filter((id): id is string => typeof id === "string" && id.length > 0)
+      .map((id) => id.trim()),
+    ambulanceIds: formData
+      .getAll("ambulanceIds")
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+      .map((id) => id.trim())
   });
 
   if (!parsed.success) {
@@ -340,6 +346,13 @@ export async function createUser(formData: FormData) {
         ? {
             createMany: {
               data: parsed.data.regionIds.map((regionId) => ({ regionId }))
+            }
+          }
+        : undefined,
+      ambulanceAssignments: parsed.data.ambulanceIds?.length
+        ? {
+            createMany: {
+              data: parsed.data.ambulanceIds.map((ambulanceId) => ({ ambulanceId }))
             }
           }
         : undefined
@@ -491,7 +504,7 @@ const ambulanceSchema = z.object({
   name: z.string().min(2),
   code: z.string().min(2),
   regionId: z.string(),
-  operatorId: z.string().optional()
+  operatorIds: z.array(z.string()).optional()
 });
 
 export async function createAmbulance(formData: FormData) {
@@ -504,7 +517,10 @@ export async function createAmbulance(formData: FormData) {
     name: formData.get("name"),
     code: formData.get("code"),
     regionId: formData.get("regionId"),
-    operatorId: formData.get("operatorId") || undefined
+    operatorIds: formData
+      .getAll("operatorIds")
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+      .map((id) => id.trim())
   });
 
   if (!parsed.success) {
@@ -516,7 +532,13 @@ export async function createAmbulance(formData: FormData) {
       name: parsed.data.name,
       code: parsed.data.code,
       regionId: parsed.data.regionId,
-      operatorId: parsed.data.operatorId
+      operatorAssignments: parsed.data.operatorIds?.length
+        ? {
+            createMany: {
+              data: parsed.data.operatorIds.map((operatorId) => ({ operatorId }))
+            }
+          }
+        : undefined
     }
   });
 

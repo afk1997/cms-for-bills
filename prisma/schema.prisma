@@ -34,8 +34,8 @@ model User {
   passwordHash    String
   role            Role
   isActive        Boolean                @default(true)
-  regions         UserRegionAssignment[]
-  ambulances      Ambulance[]            @relation("AmbulanceOperator")
+  regions               UserRegionAssignment[]
+  ambulanceAssignments  AmbulanceOperatorAssignment[]
   createdAt       DateTime               @default(now())
   updatedAt       DateTime               @updatedAt
   actions         BillStatusLog[]
@@ -56,16 +56,15 @@ model Region {
 }
 
 model Ambulance {
-  id         String   @id @default(cuid())
-  name       String
-  code       String   @unique
-  region     Region   @relation(fields: [regionId], references: [id])
-  regionId   String
-  operator   User?    @relation("AmbulanceOperator", fields: [operatorId], references: [id])
-  operatorId String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  bills      Bill[]
+  id                   String                        @id @default(cuid())
+  name                 String
+  code                 String                        @unique
+  region               Region                        @relation(fields: [regionId], references: [id])
+  regionId             String
+  createdAt            DateTime                      @default(now())
+  updatedAt            DateTime                      @updatedAt
+  bills                Bill[]
+  operatorAssignments  AmbulanceOperatorAssignment[]
 }
 
 model Bill {
@@ -136,4 +135,15 @@ model UserRegionAssignment {
   createdAt DateTime @default(now())
 
   @@unique([userId, regionId])
+}
+
+model AmbulanceOperatorAssignment {
+  id           String     @id @default(cuid())
+  ambulance    Ambulance  @relation(fields: [ambulanceId], references: [id])
+  ambulanceId  String
+  operator     User       @relation(fields: [operatorId], references: [id])
+  operatorId   String
+  createdAt    DateTime   @default(now())
+
+  @@unique([ambulanceId, operatorId])
 }

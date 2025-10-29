@@ -23,12 +23,23 @@ export default async function UsersAdminPage() {
     include: {
       regions: {
         include: { region: true }
+      },
+      ambulanceAssignments: {
+        include: {
+          ambulance: {
+            include: { region: true }
+          }
+        }
       }
     },
     orderBy: { createdAt: "desc" }
   });
 
   const regions = await prisma.region.findMany({ orderBy: { name: "asc" } });
+  const ambulances = await prisma.ambulance.findMany({
+    include: { region: true },
+    orderBy: { name: "asc" }
+  });
 
   return (
     <div className="space-y-6">
@@ -70,6 +81,17 @@ export default async function UsersAdminPage() {
             <p className="mt-1 text-xs text-slate-400">Hold Ctrl (Windows) or Command (Mac) to select multiple regions.</p>
           </div>
           <div className="md:col-span-2">
+            <label className="text-sm font-medium text-slate-600">Ambulances (optional)</label>
+            <select name="ambulanceIds" multiple className="mt-1 h-32 w-full">
+              {ambulances.map((ambulance) => (
+                <option key={ambulance.id} value={ambulance.id}>
+                  {ambulance.name} ({ambulance.code}) — {ambulance.region.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-slate-400">Hold Ctrl (Windows) or Command (Mac) to multi-select.</p>
+          </div>
+          <div className="md:col-span-2">
             <button type="submit" className="rounded-md bg-primary-600 px-4 py-2 text-white hover:bg-primary-700">
               Create user
             </button>
@@ -87,6 +109,7 @@ export default async function UsersAdminPage() {
                 <th>Email</th>
                 <th>Role</th>
                 <th>Regions</th>
+                <th>Ambulances</th>
                 <th>Created</th>
                 <th>Actions</th>
               </tr>
@@ -103,6 +126,19 @@ export default async function UsersAdminPage() {
                         {user.regions.map((assignment) => (
                           <li key={assignment.id}>
                             {assignment.region.name} ({assignment.region.city})
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <span className="text-xs text-slate-400">Not assigned</span>
+                    )}
+                  </td>
+                  <td>
+                    {user.ambulanceAssignments.length ? (
+                      <ul className="list-disc pl-4 text-sm text-slate-500">
+                        {user.ambulanceAssignments.map((assignment) => (
+                          <li key={assignment.id}>
+                            {assignment.ambulance.name} ({assignment.ambulance.code})
                           </li>
                         ))}
                       </ul>
