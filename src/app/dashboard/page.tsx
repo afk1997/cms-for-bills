@@ -46,7 +46,7 @@ export default async function DashboardPage() {
 
       <AnalyticsPanel />
 
-      {user.role === Role.OPERATOR && (
+      {(user.role === Role.OPERATOR || user.role === Role.ADMIN) && (
         <div>
           <Link
             href="/dashboard/bills/new"
@@ -77,7 +77,12 @@ export default async function DashboardPage() {
                 <tr key={bill.id} className="border-b">
                   <td>
                     <div className="flex flex-col">
-                      <span className="font-medium text-slate-800">{bill.title}</span>
+                      <Link
+                        href={`/dashboard/bills/${bill.id}`}
+                        className="font-medium text-primary-700 hover:underline"
+                      >
+                        {bill.title}
+                      </Link>
                       <span className="text-xs text-slate-500">Invoice #{bill.invoiceNumber}</span>
                     </div>
                   </td>
@@ -91,7 +96,15 @@ export default async function DashboardPage() {
                     </span>
                   </td>
                   <td className="w-64">
-                    <BillActions billStatus={bill.status} role={user.role} billId={bill.id} />
+                    <div className="flex flex-col gap-2">
+                      <Link
+                        href={`/dashboard/bills/${bill.id}`}
+                        className="text-sm font-medium text-primary-700 hover:underline"
+                      >
+                        View details
+                      </Link>
+                      <BillActions billStatus={bill.status} role={user.role} billId={bill.id} />
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -122,6 +135,12 @@ export default async function DashboardPage() {
             >
               Manage ambulances
             </Link>
+            <Link
+              href="/dashboard/bills/new"
+              className="rounded-md border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:border-primary-400 hover:text-primary-700"
+            >
+              Submit a new bill
+            </Link>
           </div>
         </section>
       )}
@@ -151,9 +170,9 @@ function BillActions({ billStatus, role, billId }: { billStatus: BillStatus; rol
     return <PaymentForm billId={billId} />;
   }
 
-  if (role === Role.LEVEL1 || role === Role.LEVEL2) {
+  if (role === Role.LEVEL1 || role === Role.LEVEL2 || role === Role.ADMIN) {
     return <TransitionForm billId={billId} role={role} />;
   }
 
-  return <span className="text-xs text-slate-400">No actions available</span>;
+  return <span className="text-xs text-slate-400">No workflow actions</span>;
 }

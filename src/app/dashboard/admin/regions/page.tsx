@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -47,10 +48,20 @@ export default async function RegionsAdminPage() {
         <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {regions.map((region) => (
             <div key={region.id} className="rounded-lg border border-slate-200 p-4">
-              <h3 className="text-base font-semibold text-slate-700">{region.name}</h3>
-              <p className="text-sm text-slate-500">
-                {region.city}, {region.state}
-              </p>
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold text-slate-700">{region.name}</h3>
+                  <p className="text-sm text-slate-500">
+                    {region.city}, {region.state}
+                  </p>
+                </div>
+                <Link
+                  href={`/dashboard/admin/regions/${region.id}`}
+                  className="text-sm font-medium text-primary-700 hover:underline"
+                >
+                  Edit
+                </Link>
+              </div>
               <p className="mt-2 text-xs text-slate-400">
                 {region.ambulances.length} ambulances • {region.bills.length} bills
               </p>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
@@ -74,6 +75,7 @@ export default async function AmbulancesAdminPage() {
                 <th>Region</th>
                 <th>Operator</th>
                 <th>Created</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -84,8 +86,22 @@ export default async function AmbulancesAdminPage() {
                   <td>
                     {ambulance.region.name} ({ambulance.region.city})
                   </td>
-                  <td>{ambulance.operator ? ambulance.operator.name : <span className="text-xs text-slate-400">Unassigned</span>}</td>
+                  <td>
+                    {ambulance.operator ? (
+                      ambulance.operator.name
+                    ) : (
+                      <span className="text-xs text-slate-400">Unassigned</span>
+                    )}
+                  </td>
                   <td>{ambulance.createdAt.toDateString()}</td>
+                  <td>
+                    <Link
+                      href={`/dashboard/admin/ambulances/${ambulance.id}`}
+                      className="text-sm font-medium text-primary-700 hover:underline"
+                    >
+                      Edit
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { createUser } from "@/lib/server-actions";
 import { Role } from "@prisma/client";
+import Link from "next/link";
 
 const roles: { label: string; value: Role }[] = [
   { label: "Admin", value: "ADMIN" },
@@ -87,6 +88,7 @@ export default async function UsersAdminPage() {
                 <th>Role</th>
                 <th>Regions</th>
                 <th>Created</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -109,6 +111,14 @@ export default async function UsersAdminPage() {
                     )}
                   </td>
                   <td>{user.createdAt.toDateString()}</td>
+                  <td>
+                    <Link
+                      href={`/dashboard/admin/users/${user.id}`}
+                      className="text-sm font-medium text-primary-700 hover:underline"
+                    >
+                      Edit
+                    </Link>
+                  </td>
                 </tr>
               ))}
             </tbody>
