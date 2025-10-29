@@ -13,22 +13,27 @@ const menuByRole: Record<Role, { label: string; href: string }[]> = {
   ADMIN: [
     { label: "Overview", href: "/dashboard" },
     { label: "Bills", href: "/dashboard#bills" },
+    { label: "History", href: "/dashboard/history" },
     { label: "Users", href: "/dashboard/admin/users" },
     { label: "Regions", href: "/dashboard/admin/regions" },
     { label: "Ambulances", href: "/dashboard/admin/ambulances" }
   ],
   OPERATOR: [
     { label: "Overview", href: "/dashboard" },
-    { label: "Submit Bill", href: "/dashboard/bills/new" }
+    { label: "Submit Bill", href: "/dashboard/bills/new" },
+    { label: "History", href: "/dashboard/history" }
   ],
   LEVEL1: [
-    { label: "Overview", href: "/dashboard" }
+    { label: "Overview", href: "/dashboard" },
+    { label: "History", href: "/dashboard/history" }
   ],
   LEVEL2: [
-    { label: "Overview", href: "/dashboard" }
+    { label: "Overview", href: "/dashboard" },
+    { label: "History", href: "/dashboard/history" }
   ],
   ACCOUNTS: [
-    { label: "Overview", href: "/dashboard" }
+    { label: "Overview", href: "/dashboard" },
+    { label: "History", href: "/dashboard/history" }
   ]
 };
 

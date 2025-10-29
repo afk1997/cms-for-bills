@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { authenticate, createSession, destroySession, getSession, hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { Role } from "@prisma/client";
@@ -175,6 +176,8 @@ function getAllowedStatus(role: Role, current: string) {
       return current === "PENDING_L1" ? ["PENDING_L2", "RETURNED_L1", "REJECTED_L1"] : [];
     case Role.LEVEL2:
       return current === "PENDING_L2" ? ["PENDING_PAYMENT", "RETURNED_L2", "REJECTED_L2"] : [];
+    case Role.ADMIN:
+      return ["PENDING_L1", "PENDING_L2", "PENDING_PAYMENT"];
     case Role.ACCOUNTS:
       return current === "PENDING_PAYMENT" ? ["PAID"] : [];
     default:
@@ -304,7 +307,114 @@ export async function createUser(formData: FormData) {
     }
   });
 
+  revalidatePath("/dashboard/admin/users");
+
   return { user };
+}
+
+const updateUserSchema = z.object({
+  userId: z.string(),
+  name: z.string().min(3),
+  email: z.string().email(),
+  role: z.nativeEnum(Role),
+  password: z.string().min(6).optional(),
+  regionIds: z.array(z.string()).optional(),
+  ambulanceIds: z.array(z.string()).optional()
+});
+
+export async function updateUser(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== Role.ADMIN) {
+    return { error: "Not authorized" };
+  }
+
+  const password = formData.get("password");
+  const parsed = updateUserSchema.safeParse({
+    userId: formData.get("userId"),
+    name: formData.get("name"),
+    email: formData.get("email"),
+    role: formData.get("role"),
+    password: typeof password === "string" && password.trim().length ? password : undefined,
+    regionIds: formData
+      .getAll("regionIds")
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+    ambulanceIds: formData
+      .getAll("ambulanceIds")
+      .filter((id): id is string => typeof id === "string" && id.length > 0)
+  });
+
+  if (!parsed.success) {
+    return { error: "Invalid user data" };
+  }
+
+  const regionIds = parsed.data.regionIds ?? [];
+  const ambulanceIds = parsed.data.ambulanceIds ?? [];
+
+  const updates: { name: string; email: string; role: Role; passwordHash?: string } = {
+    name: parsed.data.name,
+    email: parsed.data.email,
+    role: parsed.data.role
+  };
+
+  if (parsed.data.password) {
+    updates.passwordHash = await hashPassword(parsed.data.password);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: parsed.data.userId },
+      data: updates
+    });
+
+    if (regionIds.length) {
+      await tx.userRegionAssignment.deleteMany({
+        where: {
+          userId: parsed.data.userId,
+          regionId: { notIn: regionIds }
+        }
+      });
+    } else {
+      await tx.userRegionAssignment.deleteMany({ where: { userId: parsed.data.userId } });
+    }
+
+    const existingAssignments = await tx.userRegionAssignment.findMany({
+      where: { userId: parsed.data.userId }
+    });
+    const assignedRegionIds = new Set(existingAssignments.map((assignment) => assignment.regionId));
+    const regionsToCreate = regionIds.filter((regionId) => !assignedRegionIds.has(regionId));
+    if (regionsToCreate.length) {
+      await tx.userRegionAssignment.createMany({
+        data: regionsToCreate.map((regionId) => ({ userId: parsed.data.userId, regionId }))
+      });
+    }
+
+    if (ambulanceIds.length) {
+      await tx.ambulance.updateMany({
+        where: {
+          operatorId: parsed.data.userId,
+          id: { notIn: ambulanceIds }
+        },
+        data: { operatorId: null }
+      });
+    } else {
+      await tx.ambulance.updateMany({
+        where: { operatorId: parsed.data.userId },
+        data: { operatorId: null }
+      });
+    }
+
+    if (ambulanceIds.length) {
+      await tx.ambulance.updateMany({
+        where: { id: { in: ambulanceIds } },
+        data: { operatorId: parsed.data.userId }
+      });
+    }
+  });
+
+  revalidatePath("/dashboard/admin/users");
+  revalidatePath(`/dashboard/admin/users/${parsed.data.userId}`);
+
+  redirect("/dashboard/admin/users");
 }
 
 const regionSchema = z.object({
@@ -332,6 +442,8 @@ export async function createRegion(formData: FormData) {
   const region = await prisma.region.create({
     data: parsed.data
   });
+
+  revalidatePath("/dashboard/admin/regions");
 
   return { region };
 }
@@ -369,5 +481,118 @@ export async function createAmbulance(formData: FormData) {
     }
   });
 
+  revalidatePath("/dashboard/admin/ambulances");
+
+  if (parsed.data.operatorId) {
+    revalidatePath(`/dashboard/admin/users/${parsed.data.operatorId}`);
+  }
+
   return { ambulance };
+}
+
+const updateRegionSchema = regionSchema.extend({
+  regionId: z.string()
+});
+
+export async function updateRegion(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== Role.ADMIN) {
+    return { error: "Not authorized" };
+  }
+
+  const parsed = updateRegionSchema.safeParse({
+    regionId: formData.get("regionId"),
+    name: formData.get("name"),
+    city: formData.get("city"),
+    state: formData.get("state")
+  });
+
+  if (!parsed.success) {
+    return { error: "Invalid region data" };
+  }
+
+  await prisma.region.update({
+    where: { id: parsed.data.regionId },
+    data: {
+      name: parsed.data.name,
+      city: parsed.data.city,
+      state: parsed.data.state
+    }
+  });
+
+  revalidatePath("/dashboard/admin/regions");
+  revalidatePath(`/dashboard/admin/regions/${parsed.data.regionId}`);
+  revalidatePath("/dashboard/admin/ambulances");
+
+  redirect("/dashboard/admin/regions");
+}
+
+const updateAmbulanceSchema = ambulanceSchema.extend({
+  ambulanceId: z.string()
+});
+
+export async function updateAmbulance(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== Role.ADMIN) {
+    return { error: "Not authorized" };
+  }
+
+  const parsed = updateAmbulanceSchema.safeParse({
+    ambulanceId: formData.get("ambulanceId"),
+    name: formData.get("name"),
+    code: formData.get("code"),
+    regionId: formData.get("regionId"),
+    operatorId: (() => {
+      const operatorId = formData.get("operatorId");
+      return typeof operatorId === "string" && operatorId.length ? operatorId : undefined;
+    })()
+  });
+
+  if (!parsed.success) {
+    return { error: "Invalid ambulance data" };
+  }
+
+  const existing = await prisma.ambulance.findUnique({
+    where: { id: parsed.data.ambulanceId },
+    select: { operatorId: true, regionId: true }
+  });
+
+  if (!existing) {
+    return { error: "Ambulance not found" };
+  }
+
+  const ambulance = await prisma.ambulance.update({
+    where: { id: parsed.data.ambulanceId },
+    data: {
+      name: parsed.data.name,
+      code: parsed.data.code,
+      regionId: parsed.data.regionId,
+      operatorId: parsed.data.operatorId ?? null
+    }
+  });
+
+  revalidatePath("/dashboard/admin/ambulances");
+  revalidatePath(`/dashboard/admin/ambulances/${parsed.data.ambulanceId}`);
+  revalidatePath("/dashboard/admin/regions");
+
+  const affectedRegions = new Set([existing.regionId, ambulance.regionId]);
+  for (const regionId of affectedRegions) {
+    revalidatePath(`/dashboard/admin/regions/${regionId}`);
+  }
+
+  const affectedUsers = new Set<string>();
+  if (existing.operatorId) {
+    affectedUsers.add(existing.operatorId);
+  }
+  if (ambulance.operatorId) {
+    affectedUsers.add(ambulance.operatorId);
+  }
+
+  for (const userId of affectedUsers) {
+    revalidatePath(`/dashboard/admin/users/${userId}`);
+  }
+
+  revalidatePath("/dashboard/admin/users");
+
+  redirect("/dashboard/admin/ambulances");
 }

@@ -16,6 +16,8 @@ function allowedStatuses(role: Role, current: BillStatus): BillStatus[] {
       return current === "PENDING_L1" ? ["PENDING_L2", "RETURNED_L1", "REJECTED_L1"] : [];
     case "LEVEL2":
       return current === "PENDING_L2" ? ["PENDING_PAYMENT", "RETURNED_L2", "REJECTED_L2"] : [];
+    case "ADMIN":
+      return ["PENDING_L1", "PENDING_L2", "PENDING_PAYMENT"];
     default:
       return [];
   }
