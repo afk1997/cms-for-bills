@@ -18,9 +18,7 @@ export default async function EditAmbulancePage({ params }: PageParams) {
     where: { id: params.ambulanceId },
     include: {
       region: true,
-      operatorAssignments: {
-        include: { operator: true }
-      },
+      operator: true,
       bills: { select: { id: true } }
     }
   });
@@ -31,7 +29,6 @@ export default async function EditAmbulancePage({ params }: PageParams) {
 
   const regions = await prisma.region.findMany({ orderBy: { name: "asc" } });
   const operators = await prisma.user.findMany({ where: { role: "OPERATOR" }, orderBy: { name: "asc" } });
-  const assignedOperatorIds = ambulance.operatorAssignments.map((assignment) => assignment.operatorId);
 
   return (
     <div className="space-y-6">
@@ -69,20 +66,15 @@ export default async function EditAmbulancePage({ params }: PageParams) {
             </select>
           </div>
           <div>
-            <label className="text-sm font-medium text-slate-600">Operators</label>
-            <select
-              name="operatorIds"
-              multiple
-              defaultValue={assignedOperatorIds}
-              className="mt-1 h-32 w-full"
-            >
+            <label className="text-sm font-medium text-slate-600">Operator</label>
+            <select name="operatorId" defaultValue={ambulance.operatorId ?? ""} className="mt-1 w-full">
+              <option value="">Unassigned</option>
               {operators.map((operator) => (
                 <option key={operator.id} value={operator.id}>
                   {operator.name}
                 </option>
               ))}
             </select>
-            <p className="mt-1 text-xs text-slate-400">Hold Ctrl or Command to multi-select.</p>
           </div>
           <div className="md:col-span-2">
             <button type="submit" className="rounded-md bg-primary-600 px-4 py-2 text-white hover:bg-primary-700">
@@ -98,12 +90,8 @@ export default async function EditAmbulancePage({ params }: PageParams) {
           This ambulance is currently mapped to the <span className="font-medium">{ambulance.region.name}</span> region
           and has {ambulance.bills.length} bill(s) linked.
         </p>
-        {ambulance.operatorAssignments.length ? (
-          <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-500">
-            {ambulance.operatorAssignments.map((assignment) => (
-              <li key={assignment.id}>{assignment.operator.name}</li>
-            ))}
-          </ul>
+        {ambulance.operator ? (
+          <p className="mt-2 text-xs text-slate-400">Operator contact: {ambulance.operator.email}</p>
         ) : (
           <p className="mt-2 text-xs text-slate-400">Assign an operator to enable bill submissions.</p>
         )}

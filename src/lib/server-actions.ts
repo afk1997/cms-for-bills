@@ -81,13 +81,7 @@ export async function createBill(formData: FormData) {
 
   const ambulance = await prisma.ambulance.findUnique({
     where: { id: parsed.data.ambulanceId },
-    include: {
-      region: true,
-      operatorAssignments: {
-        include: { operator: true },
-        orderBy: { createdAt: "asc" }
-      }
-    }
+    include: { region: true, operator: true }
   });
   if (!ambulance) {
     return { error: "Ambulance not found" };
@@ -112,11 +106,6 @@ export async function createBill(formData: FormData) {
       ? getAdminSubmissionNote(destinationStatus)
       : "Bill submitted";
 
-  const defaultOperatorId =
-    session.role === Role.ADMIN
-      ? ambulance.operatorAssignments[0]?.operatorId ?? session.user.id
-      : session.user.id;
-
   await prisma.bill.create({
     data: {
       title: parsed.data.title,
@@ -128,7 +117,10 @@ export async function createBill(formData: FormData) {
       description: parsed.data.description,
       regionId: ambulance.regionId,
       ambulanceId: ambulance.id,
-      operatorId: defaultOperatorId,
+      operatorId:
+        session.role === Role.ADMIN
+          ? ambulance.operator?.id ?? session.user.id
+          : session.user.id,
       status: destinationStatus,
       attachments: {
         create: attachments
@@ -368,13 +360,6 @@ export async function createUser(formData: FormData) {
   });
 
   revalidatePath("/dashboard/admin/users");
-  if (parsed.data.ambulanceIds?.length) {
-    revalidatePath("/dashboard/admin/ambulances");
-    const affectedAmbulances = new Set(parsed.data.ambulanceIds);
-    for (const ambulanceId of affectedAmbulances) {
-      revalidatePath(`/dashboard/admin/ambulances/${ambulanceId}`);
-    }
-  }
 
   return { user };
 }
@@ -404,12 +389,10 @@ export async function updateUser(formData: FormData) {
     password: typeof password === "string" && password.trim().length ? password : undefined,
     regionIds: formData
       .getAll("regionIds")
-      .filter((id): id is string => typeof id === "string" && id.length > 0)
-      .map((id) => id.trim()),
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
     ambulanceIds: formData
       .getAll("ambulanceIds")
       .filter((id): id is string => typeof id === "string" && id.length > 0)
-      .map((id) => id.trim())
   });
 
   if (!parsed.success) {
@@ -428,8 +411,6 @@ export async function updateUser(formData: FormData) {
   if (parsed.data.password) {
     updates.passwordHash = await hashPassword(parsed.data.password);
   }
-
-  let previousAmbulanceIds: string[] = [];
 
   await prisma.$transaction(async (tx) => {
     await tx.user.update({
@@ -459,42 +440,31 @@ export async function updateUser(formData: FormData) {
       });
     }
 
-    const existingAmbulanceAssignments = await tx.ambulanceOperatorAssignment.findMany({
-      where: { operatorId: parsed.data.userId }
-    });
-    previousAmbulanceIds = existingAmbulanceAssignments.map((assignment) => assignment.ambulanceId);
     if (ambulanceIds.length) {
-      await tx.ambulanceOperatorAssignment.deleteMany({
+      await tx.ambulance.updateMany({
         where: {
           operatorId: parsed.data.userId,
-          ambulanceId: { notIn: ambulanceIds }
-        }
+          id: { notIn: ambulanceIds }
+        },
+        data: { operatorId: null }
       });
     } else {
-      await tx.ambulanceOperatorAssignment.deleteMany({ where: { operatorId: parsed.data.userId } });
+      await tx.ambulance.updateMany({
+        where: { operatorId: parsed.data.userId },
+        data: { operatorId: null }
+      });
     }
 
-    const currentAmbulanceIds = new Set(previousAmbulanceIds);
-    const ambulancesToCreate = ambulanceIds.filter((ambulanceId) => !currentAmbulanceIds.has(ambulanceId));
-    if (ambulancesToCreate.length) {
-      await tx.ambulanceOperatorAssignment.createMany({
-        data: ambulancesToCreate.map((ambulanceId) => ({
-          operatorId: parsed.data.userId,
-          ambulanceId
-        }))
+    if (ambulanceIds.length) {
+      await tx.ambulance.updateMany({
+        where: { id: { in: ambulanceIds } },
+        data: { operatorId: parsed.data.userId }
       });
     }
   });
 
   revalidatePath("/dashboard/admin/users");
   revalidatePath(`/dashboard/admin/users/${parsed.data.userId}`);
-  const affectedAmbulances = new Set([...previousAmbulanceIds, ...ambulanceIds]);
-  if (affectedAmbulances.size) {
-    revalidatePath("/dashboard/admin/ambulances");
-    for (const ambulanceId of affectedAmbulances) {
-      revalidatePath(`/dashboard/admin/ambulances/${ambulanceId}`);
-    }
-  }
 
   redirect("/dashboard/admin/users");
 }
@@ -574,12 +544,8 @@ export async function createAmbulance(formData: FormData) {
 
   revalidatePath("/dashboard/admin/ambulances");
 
-  if (parsed.data.operatorIds?.length) {
-    revalidatePath("/dashboard/admin/users");
-    const affectedUsers = new Set(parsed.data.operatorIds);
-    for (const operatorId of affectedUsers) {
-      revalidatePath(`/dashboard/admin/users/${operatorId}`);
-    }
+  if (parsed.data.operatorId) {
+    revalidatePath(`/dashboard/admin/users/${parsed.data.operatorId}`);
   }
 
   return { ambulance };
@@ -637,10 +603,10 @@ export async function updateAmbulance(formData: FormData) {
     name: formData.get("name"),
     code: formData.get("code"),
     regionId: formData.get("regionId"),
-    operatorIds: formData
-      .getAll("operatorIds")
-      .filter((id): id is string => typeof id === "string" && id.length > 0)
-      .map((id) => id.trim())
+    operatorId: (() => {
+      const operatorId = formData.get("operatorId");
+      return typeof operatorId === "string" && operatorId.length ? operatorId : undefined;
+    })()
   });
 
   if (!parsed.success) {
@@ -649,71 +615,39 @@ export async function updateAmbulance(formData: FormData) {
 
   const existing = await prisma.ambulance.findUnique({
     where: { id: parsed.data.ambulanceId },
-    select: {
-      regionId: true,
-      operatorAssignments: { select: { operatorId: true } }
-    }
+    select: { operatorId: true, regionId: true }
   });
 
   if (!existing) {
     return { error: "Ambulance not found" };
   }
 
-  const newOperatorIds = parsed.data.operatorIds ?? [];
-  const previousOperatorIds = existing.operatorAssignments.map((assignment) => assignment.operatorId);
-
-  let updatedAmbulance: { id: string; regionId: string } | null = null;
-
-  await prisma.$transaction(async (tx) => {
-    updatedAmbulance = await tx.ambulance.update({
-      where: { id: parsed.data.ambulanceId },
-      data: {
-        name: parsed.data.name,
-        code: parsed.data.code,
-        regionId: parsed.data.regionId
-      },
-      select: { id: true, regionId: true }
-    });
-
-    if (newOperatorIds.length) {
-      await tx.ambulanceOperatorAssignment.deleteMany({
-        where: {
-          ambulanceId: parsed.data.ambulanceId,
-          operatorId: { notIn: newOperatorIds }
-        }
-      });
-    } else {
-      await tx.ambulanceOperatorAssignment.deleteMany({
-        where: { ambulanceId: parsed.data.ambulanceId }
-      });
-    }
-
-    const currentOperatorIds = new Set(previousOperatorIds);
-    const operatorsToCreate = newOperatorIds.filter((operatorId) => !currentOperatorIds.has(operatorId));
-    if (operatorsToCreate.length) {
-      await tx.ambulanceOperatorAssignment.createMany({
-        data: operatorsToCreate.map((operatorId) => ({
-          ambulanceId: parsed.data.ambulanceId,
-          operatorId
-        }))
-      });
+  const ambulance = await prisma.ambulance.update({
+    where: { id: parsed.data.ambulanceId },
+    data: {
+      name: parsed.data.name,
+      code: parsed.data.code,
+      regionId: parsed.data.regionId,
+      operatorId: parsed.data.operatorId ?? null
     }
   });
-
-  if (!updatedAmbulance) {
-    return { error: "Failed to update ambulance" };
-  }
 
   revalidatePath("/dashboard/admin/ambulances");
   revalidatePath(`/dashboard/admin/ambulances/${parsed.data.ambulanceId}`);
   revalidatePath("/dashboard/admin/regions");
 
-  const affectedRegions = new Set([existing.regionId, updatedAmbulance.regionId]);
+  const affectedRegions = new Set([existing.regionId, ambulance.regionId]);
   for (const regionId of affectedRegions) {
     revalidatePath(`/dashboard/admin/regions/${regionId}`);
   }
 
-  const affectedUsers = new Set([...previousOperatorIds, ...newOperatorIds]);
+  const affectedUsers = new Set<string>();
+  if (existing.operatorId) {
+    affectedUsers.add(existing.operatorId);
+  }
+  if (ambulance.operatorId) {
+    affectedUsers.add(ambulance.operatorId);
+  }
 
   for (const userId of affectedUsers) {
     revalidatePath(`/dashboard/admin/users/${userId}`);

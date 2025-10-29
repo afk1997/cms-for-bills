@@ -14,17 +14,8 @@ export default async function NewBillPage() {
   }
 
   const ambulances = await prisma.ambulance.findMany({
-    where:
-      session.user.role === Role.OPERATOR
-        ? { operatorAssignments: { some: { operatorId: session.user.id } } }
-        : {},
-    include: {
-      region: true,
-      operatorAssignments: {
-        include: { operator: true },
-        orderBy: { createdAt: "asc" }
-      }
-    },
+    where: session.user.role === Role.OPERATOR ? { operatorId: session.user.id } : {},
+    include: { region: true, operator: true },
     orderBy: { name: "asc" }
   });
 
@@ -40,17 +31,11 @@ export default async function NewBillPage() {
             <label className="text-sm font-medium text-slate-600">Ambulance</label>
             <select name="ambulanceId" required className="mt-1 w-full">
               <option value="">Select ambulance</option>
-              {ambulances.map((ambulance) => {
-                const operatorNames = ambulance.operatorAssignments
-                  .map((assignment) => assignment.operator.name)
-                  .join(", ");
-                const operatorSuffix = operatorNames ? ` • ${operatorNames}` : "";
-                return (
-                  <option key={ambulance.id} value={ambulance.id}>
-                    {`${ambulance.name} (${ambulance.region.name}${operatorSuffix})`}
-                  </option>
-                );
-              })}
+              {ambulances.map((ambulance) => (
+                <option key={ambulance.id} value={ambulance.id}>
+                  {`${ambulance.name} (${ambulance.region.name}${ambulance.operator ? ` • ${ambulance.operator.name}` : ""})`}
+                </option>
+              ))}
             </select>
           </div>
           {session.user.role === Role.ADMIN && (

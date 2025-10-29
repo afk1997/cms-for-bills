@@ -29,12 +29,8 @@ export default async function EditUserPage({ params }: PageParams) {
       regions: {
         include: { region: true }
       },
-      ambulanceAssignments: {
-        include: {
-          ambulance: {
-            include: { region: true }
-          }
-        }
+      ambulances: {
+        include: { region: true }
       }
     }
   });
@@ -50,7 +46,7 @@ export default async function EditUserPage({ params }: PageParams) {
   });
 
   const assignedRegionIds = user.regions.map((assignment) => assignment.regionId);
-  const assignedAmbulanceIds = user.ambulanceAssignments.map((assignment) => assignment.ambulanceId);
+  const assignedAmbulanceIds = user.ambulances.map((ambulance) => ambulance.id);
 
   return (
     <div className="space-y-6">
@@ -158,11 +154,11 @@ export default async function EditUserPage({ params }: PageParams) {
           </div>
           <div>
             <h3 className="text-sm font-semibold text-slate-700">Ambulances</h3>
-            {user.ambulanceAssignments.length ? (
+            {user.ambulances.length ? (
               <ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-slate-600">
-                {user.ambulanceAssignments.map((assignment) => (
-                  <li key={assignment.id}>
-                    {assignment.ambulance.name} ({assignment.ambulance.code}) — {assignment.ambulance.region.name}
+                {user.ambulances.map((ambulance) => (
+                  <li key={ambulance.id}>
+                    {ambulance.name} ({ambulance.code}) — {ambulance.region.name}
                   </li>
                 ))}
               </ul>
