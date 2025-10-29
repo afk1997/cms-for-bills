@@ -1,0 +1,138 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  OPERATOR
+  LEVEL1
+  LEVEL2
+  ACCOUNTS
+}
+
+enum BillStatus {
+  DRAFT
+  PENDING_L1
+  PENDING_L2
+  RETURNED_L1
+  RETURNED_L2
+  REJECTED_L1
+  REJECTED_L2
+  PENDING_PAYMENT
+  PAID
+}
+
+model User {
+  id             String    @id @default(cuid())
+  name           String
+  email          String    @unique
+  passwordHash   String
+  role           Role
+  isActive       Boolean   @default(true)
+  regions        UserRegionAssignment[]
+  ambulances     Ambulance[] @relation("AmbulanceOperator")
+  operatorBills  Bill[]      @relation("BillOperator")
+  paymentsRaised Payment[]   @relation("PaymentCreator")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  actions        BillStatusLog[]
+}
+
+model Region {
+  id         String                   @id @default(cuid())
+  name       String
+  city       String
+  state      String
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+  ambulances Ambulance[]
+  users      UserRegionAssignment[]
+  bills      Bill[]
+}
+
+model Ambulance {
+  id            String   @id @default(cuid())
+  name          String
+  code          String   @unique
+  region        Region   @relation(fields: [regionId], references: [id])
+  regionId      String
+  operator      User?    @relation("AmbulanceOperator", fields: [operatorId], references: [id])
+  operatorId    String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  bills         Bill[]
+}
+
+model Bill {
+  id              String          @id @default(cuid())
+  title           String
+  vendor          String
+  amount          Decimal         @db.Decimal(12, 2)
+  currency        String          @default("INR")
+  invoiceNumber   String
+  invoiceDate     DateTime
+  description     String?
+  status          BillStatus      @default(PENDING_L1)
+  region          Region          @relation(fields: [regionId], references: [id])
+  regionId        String
+  ambulance       Ambulance       @relation(fields: [ambulanceId], references: [id])
+  ambulanceId     String
+  operator        User            @relation("BillOperator", fields: [operatorId], references: [id])
+  operatorId      String
+  payment         Payment?
+  attachments     BillAttachment[]
+  logs            BillStatusLog[]
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model BillAttachment {
+  id        String   @id @default(cuid())
+  fileName  String
+  fileUrl   String
+  bill      Bill     @relation(fields: [billId], references: [id])
+  billId    String
+  createdAt DateTime @default(now())
+}
+
+model BillStatusLog {
+  id        String    @id @default(cuid())
+  bill      Bill      @relation(fields: [billId], references: [id])
+  billId    String
+  from      BillStatus?
+  to        BillStatus
+  note      String?
+  actor     User      @relation(fields: [actorId], references: [id])
+  actorId   String
+  createdAt DateTime  @default(now())
+}
+
+model Payment {
+  id             String   @id @default(cuid())
+  bill           Bill     @relation(fields: [billId], references: [id])
+  billId         String   @unique
+  referenceNo    String
+  paymentDate    DateTime
+  amountPaid     Decimal  @db.Decimal(12, 2)
+  paymentMode    String
+  receiptUrl     String?
+  notes          String?
+  createdBy      User     @relation("PaymentCreator", fields: [createdById], references: [id])
+  createdById    String
+  createdAt      DateTime @default(now())
+}
+
+model UserRegionAssignment {
+  id        String  @id @default(cuid())
+  user      User    @relation(fields: [userId], references: [id])
+  userId    String
+  region    Region  @relation(fields: [regionId], references: [id])
+  regionId  String
+  createdAt DateTime @default(now())
+  @@unique([userId, regionId])
+}
